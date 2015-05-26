@@ -69,6 +69,8 @@
 #define out_of_spec "<OUT OF SPEC>"
 static const char *bad_index = "<BAD INDEX>";
 
+static u16 calc_max_struct_size = 0;
+
 #define SUPPORTED_SMBIOS_VER 0x0207
 
 /*
@@ -4369,6 +4371,7 @@ static void dmi_table(u32 base, u16 len, u16 num, u16 ver, const char *devmem)
 		u8 *next;
 		struct dmi_header h;
 		int display;
+		int structure_len;
 
 		to_dmi_header(&h, data);
 		display = ((opt.type == NULL || opt.type[h.type])
@@ -4407,6 +4410,11 @@ static void dmi_table(u32 base, u16 len, u16 num, u16 ver, const char *devmem)
 		while (next - buf + 1 < len && (next[0] != 0 || next[1] != 0))
 			next++;
 		next += 2;
+
+		structure_len = next - data;
+		if (structure_len > calc_max_struct_size)
+			calc_max_struct_size = structure_len;
+
 		if (display)
 		{
 			if (next - buf <= len)
@@ -4462,6 +4470,7 @@ static void overwrite_dmi_address(u8 *buf)
 static int smbios_decode(u8 *buf, const char *devmem)
 {
 	u16 ver;
+	u16 max_struct_size;
 
 	if (!checksum(buf, buf[0x05])
 	 || memcmp(buf + 0x10, "_DMI_", 5) != 0
@@ -4490,6 +4499,10 @@ static int smbios_decode(u8 *buf, const char *devmem)
 		printf("SMBIOS %u.%u present.\n",
 			ver >> 8, ver & 0xFF);
 
+	max_struct_size = WORD(buf + 0x08);
+	printf("Maximum structure size is 0x%hx bytes.\n",
+		(short unsigned int)max_struct_size);
+
 	dmi_table(DWORD(buf + 0x18), WORD(buf + 0x16), WORD(buf + 0x1C),
 		ver, devmem);
 
@@ -4505,6 +4518,10 @@ static int smbios_decode(u8 *buf, const char *devmem)
 				opt.dumpfile);
 		write_dump(0, crafted[0x05], crafted, opt.dumpfile, 1);
 	}
+
+	if (max_struct_size != calc_max_struct_size)
+		printf("Reported (0x%hx) vs actual (0x%hx) SMBIOS maximum sturcture size do not match.\n",
+		(short unsigned int)max_struct_size, (short unsigned int)calc_max_struct_size);
 
 	return 1;
 }
